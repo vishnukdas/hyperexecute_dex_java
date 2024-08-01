@@ -5,8 +5,12 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 import org.testng.annotations.*;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
 import java.io.FileInputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -132,7 +136,7 @@ public class api
                 "    \"discoveryObject\": \"executionList\"\n" +
                 "}";
     
-        String auth = "tjx:s6ur01PrOLQo4mzhfVed3zkvI8Ff1Rf3fR1woPnqwDFOe6yUq5";
+        String auth = "username:accesskey";
         String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes());
         System.out.println("encodedauth --------- > " + encodedAuth);
         
@@ -186,6 +190,58 @@ public class api
             }
             
             System.out.println("Job is finished!");
+        }
+    
+        // Fetch the execution ID
+        String executionIdUrl = "https://api-hyperexecute.lambdatest.com/sentinel/v1.0/meta?jobId=" + jobID + "&framework=tosca-dex";
+        Request executionIdRequest = new Request.Builder()
+                .url(executionIdUrl)
+                .addHeader("Authorization", "Basic " + encodedAuth)
+                .build();
+
+        String executionID = null;
+        try (Response response = client.newCall(executionIdRequest).execute()) {
+            String responseBody = response.body().string();
+            // System.out.println(responseBody);
+
+            // Parse the response to get the executionID
+            JsonElement jsonElement = JsonParser.parseString(responseBody);
+            if (jsonElement.isJsonObject()) {
+                JsonObject jsonResponse = jsonElement.getAsJsonObject();
+                JsonElement executionIdElement = jsonResponse.getAsJsonObject("data").getAsJsonObject("dexResponse").get("ExecutionId");
+                if (executionIdElement != null && executionIdElement.isJsonPrimitive()) {
+                    executionID = executionIdElement.getAsString();
+                    // System.out.println("Execution ID : "+executionID);  
+
+                }
+            } else {
+                System.out.println("Unexpected response format for execution ID: " + responseBody);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        if (executionID != null) {
+            // Get the XML response
+            String xmlUrl = "http://" + dexAddress + "/automationobjectservice/api/Execution/" + executionID + "/results?partial=true";
+            Request xmlRequest = new Request.Builder()
+                    .url(xmlUrl)
+                    .addHeader("X-Tricentis", "OK")
+                    .build();
+
+            try (Response response = client.newCall(xmlRequest).execute()) {
+                String xmlResponse = response.body().string();
+                // System.out.println(xmlResponse);
+
+                // Save XML response to file
+                try (FileWriter fileWriter = new FileWriter("tosca_dex_results.xml")) {
+                    fileWriter.write(xmlResponse);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 }
